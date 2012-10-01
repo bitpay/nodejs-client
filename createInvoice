@@ -1,0 +1,74 @@
+#!/usr/bin/env node
+// vi: ft=javascript
+/*
+©2012 BIT-PAY LLC.
+Permission is hereby granted to any person obtaining a copy of this software
+and associated documentation for use and/or modification in association with
+the bit-pay.com service. 
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+var handleResponse = function(obj) {
+  // Write the JSON encoded invoice to stdout.  The output will be written on a single
+  // line.  Clients can parse the output, or the behavior of this function can be customized
+  // to suit.
+
+  console.log(JSON.stringify(obj));
+}
+
+var fs = require('fs')
+  , crypto = require('crypto')
+  , https = require('https')
+  , config = require('./config');
+
+function createInvoice(newInvoiceString) {
+  var newInvoice = JSON.parse(newInvoiceString);
+  var options = {
+    host: config.host || 'bitpay.com',
+    port: config.port || 443,
+    path: '/api/invoice/',
+    method: 'POST',
+    auth: config.apiKey+':',
+    agent: false,
+    //rejectUnauthorized: true,
+  };
+
+  var req = https.request(options, function(res) {
+    var data = '';
+    res.on('data', function(chunk) {
+      data += chunk;
+    });
+    res.on('end', function() {
+      var obj;
+      try {
+        obj = JSON.parse(data);
+      } catch(e) {
+        obj = {error: {type: 'parsingError', message: 'Error parsing server response'}};
+      }
+      handleResponse(obj);
+    });
+  });
+  req.on('error', function(err) {
+    handleResponse({error: {type: 'socketError', message: err.message}});
+  });
+  req.setHeader('Content-Type', 'application/json');
+  var str = JSON.stringify(newInvoice);
+  req.setHeader('Content-Length', str.length);
+  req.end(str);
+}
+
+try {
+  var newInvoiceStr = fs.readFileSync('/dev/stdin').toString();
+} catch(e) {
+  console.log('usage: createInvoice < <file>');
+  process.exit(1);
+}
+
+createInvoice(newInvoiceStr);

@@ -1,0 +1,73 @@
+#!/usr/bin/env node
+// vi: ft=javascript
+/*
+©2012 BIT-PAY LLC. 
+Permission is hereby granted to any person obtaining a copy of this software
+and associated documentation for use and/or modification in association with
+the bit-pay.com service.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+var https = require('https')
+  , fs = require('fs')
+  , querystring = require('querystring')
+  , config = require('./config');
+
+var port = process.argv[2]; // The port to listen on
+if(!port) port = config.listenerPort || 8000;
+
+var handleNotification = function(notification) {
+  // Each notification is written to stdout, one line at a time, as a json 
+  // encoded object.  A client can process and parse stdout.  Errors are written to
+  // stderr and are also in json notation.  Alternatively, this function can
+  // be altered and customized to handle incoming notifications
+  console.log(JSON.stringify(notification));
+};
+
+
+var options = {
+  key: fs.readFileSync(config.sslKey || './ssl-key.pem'),
+  cert: fs.readFileSync(config.sslCert || './ssl-cert.pem'),
+  agent: false,
+  requestCert: true,
+  rejectUnauthorized: false,
+};
+
+var parseBody = function(data, encoding) {
+  if(encoding == 'application/json') {
+    return JSON.parse(data);
+  } else {
+    return querystring.parse(data);
+  }
+};
+    
+https.createServer(options, function (req, res) {
+  var data = '', contentType = req.headers['content-type'];
+  if((contentType == 'application/json') || (contentType == 'application/x-www-form-urlencoded')) {
+    var contentType = req.headers['content-type'];
+    req.on('data', function(chunk) {data += chunk});
+    req.on('end', function() {
+      var notification;
+      try {
+        notification = parseBody(data.toString(), contentType);
+      } catch(e) {
+        console.error(JSON.stringify({error: ('parsing error: '+e)}));
+      }
+      if(notification) handleNotification(notification);
+      res.writeHead(200);
+      res.end();
+    });
+  } else {
+    console.error('{"warning": "malformed request"}');
+    res.writeHead(400);
+    res.write(JSON.stringify({error: {type: 'badRequest', message: 'unsupported encoding'}}))
+    res.end();
+  }
+}).listen(port);

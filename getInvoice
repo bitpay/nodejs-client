@@ -1,0 +1,66 @@
+#!/usr/bin/env node
+// vi: ft=javascript
+/*
+©2012 BIT-PAY LLC. 
+Permission is hereby granted to any person obtaining a copy of this software
+and associated documentation for use and/or modification in association with
+the bit-pay.com service.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+var handleResponse = function(obj) {
+  // Write the JSON encoded invoice to stdout.  The output will be written on a single
+  // line.  Clients can parse the output, or the behavior of this function can be customized
+  // to suit.
+
+  console.log(JSON.stringify(obj));
+}
+
+var fs = require('fs')
+  , crypto = require('crypto')
+  , https = require('https')
+  , config = require('./config');
+
+var fetchInvoice = function(invoiceId, callback) {
+  var options = {
+    host: config.host || 'bitpay.com',
+    port: config.port || 443,
+    path: '/api/invoice/'+invoiceId,
+    method: 'GET',
+    auth: config.apiKey + ':',
+    agent: false,
+    rejectUnauthorized: true,
+  };
+
+  var req = https.request(options, function(res) {
+    var body = '';
+    res.on('data', function(data) {
+      body += data;
+    });
+    res.on('end', function() {
+      try {
+        var obj = JSON.parse(body);
+        callback(obj);
+      } catch(e) {
+        callback({error: {type: 'parsingError', message: 'Error parsing server response'}});
+      }
+    });
+  });
+  req.on('error', function(err) {
+    callback({error: {type: 'socketError', message: err.message}});
+  });
+  req.end();
+}
+
+if(process.argv[2]) {
+  fetchInvoice(process.argv[2], handleResponse);
+} else {
+  console.log('usage: getInvoice <invoiceId>');
+}
